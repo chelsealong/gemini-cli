@@ -645,7 +645,12 @@ export const AppContainer = (props: AppContainerProps) => {
 
   const refreshStatic = useCallback(() => {
     if (!isAlternateBuffer && !config.getUseTerminalBuffer()) {
-      stdout.write(ansiEscapes.clearTerminal);
+      // Clear only the visible viewport before remounting the static
+      // history so it can be reprinted without duplication. Deliberately
+      // avoid `ansiEscapes.clearTerminal`, which also sends the "erase
+      // scrollback buffer" sequence (ESC 3J) on most terminals and wipes
+      // out everything the user has scrolled past, not just this redraw.
+      stdout.write(ansiEscapes.eraseScreen + ansiEscapes.cursorTo(0, 0));
       setHistoryRemountKey((prev) => prev + 1);
     }
   }, [setHistoryRemountKey, isAlternateBuffer, stdout, config]);

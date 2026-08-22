@@ -3264,6 +3264,45 @@ describe('AppContainer State Management', () => {
       unmount();
     });
 
+    it('does not erase the terminal scrollback buffer when refreshing static history', async () => {
+      const { checkPermissions } = await import(
+        './hooks/atCommandProcessor.js'
+      );
+      vi.mocked(checkPermissions).mockResolvedValue([]);
+
+      const { unmount } = await act(async () =>
+        renderAppContainer({
+          settings: createMockSettings({ ui: { useAlternateBuffer: false } }),
+        }),
+      );
+
+      expect(capturedUIActions).toBeTruthy();
+
+      // Expand first
+      act(() => capturedUIActions.setConstrainHeight(false));
+      expect(capturedUIState.constrainHeight).toBe(false);
+
+      // Reset mock stdout to clear any initial writes
+      mocks.mockStdout.write.mockClear();
+      (disableMouseEvents as import('vitest').Mock).mockClear();
+
+      // Submit, which triggers refreshStatic() since we are not in the
+      // alternate buffer and constrainHeight was false.
+      await act(async () => capturedUIActions.handleFinalSubmit('test prompt'));
+
+      // The "erase scrollback buffer" ANSI sequence (ESC 3J) must never be
+      // written, or the user's terminal history above the visible viewport
+      // is destroyed every time the static history is refreshed.
+      const eraseScrollbackCalls = mocks.mockStdout.write.mock.calls.filter(
+        (call: unknown[]) => {
+          const [chunk] = call;
+          return typeof chunk === 'string' && chunk.includes('\x1b[3J');
+        },
+      );
+      expect(eraseScrollbackCalls).toHaveLength(0);
+      unmount();
+    });
+
     it('resets expansion state on submission when in alternate buffer without clearing terminal', async () => {
       const { checkPermissions } = await import(
         './hooks/atCommandProcessor.js'
